@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies (root)
+        run: npm install
+
+      - name: Install dependencies (openai-quickstart-node)
+        working-directory: openai-quickstart-node
+        run: npm install
+
+      - name: Check syntax
+        run: node --check server.js
+
+      - name: Smoke test
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          node server.js &
+          SERVER_PID=$!
+          sleep 2
+
+          # 测试 /chat 接口
+          RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/response.json \
+            -X POST http://localhost:3000/chat \
+            -H "Content-Type: application/json" \
+            -d '{"message":"Say hi"}')
+
+          kill $SERVER_PID 2>/dev/null
+
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "✅ Server started successfully"
+            cat /tmp/response.json
+          else
+            echo "❌ Server test failed with status: $RESPONSE"
+            exit 1
+          fi
