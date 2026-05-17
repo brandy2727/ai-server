@@ -1,0 +1,15 @@
+{
+  "name": "openai-quickstart-node",
+  "version": "1.0.0",
+  "description": "node quickstart for OpenAI APIs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "openai": "^4.104.0"
+  },
+  "type": "module"
+}
