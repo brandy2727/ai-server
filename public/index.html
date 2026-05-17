@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Study Planner</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f0f2f5; color: #333; min-height: 100vh;
+    display: flex; justify-content: center; padding: 20px;
+  }
+  .container { max-width: 700px; width: 100%; }
+
+  /* tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+  .tabs button {
+    flex: 1; padding: 12px; border: none; background: #e0e0e0;
+    border-radius: 8px 8px 0 0; font-size: 15px; cursor: pointer;
+    transition: background 0.2s; font-weight: 500;
+  }
+  .tabs button.active { background: #fff; color: #4f46e5; font-weight: 600; }
+  .tabs button:hover:not(.active) { background: #d0d0d0; }
+
+  .panel { display: none; background: #fff; border-radius: 0 8px 8px 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .panel.active { display: block; }
+
+  h1 { font-size: 22px; margin-bottom: 16px; color: #1a1a2e; }
+
+  /* chat */
+  #chat-box {
+    height: 350px; overflow-y: auto; border: 1px solid #e5e7eb;
+    border-radius: 8px; padding: 16px; margin-bottom: 12px;
+    background: #fafafa; display: flex; flex-direction: column; gap: 10px;
+  }
+  .msg { padding: 10px 14px; border-radius: 12px; max-width: 85%; line-height: 1.5; font-size: 14px; }
+  .msg.user { background: #4f46e5; color: #fff; align-self: flex-end; }
+  .msg.assistant { background: #e8e8e8; color: #333; align-self: flex-start; }
+  .msg.error { background: #fee2e2; color: #dc2626; align-self: center; }
+
+  .input-row { display: flex; gap: 8px; }
+  .input-row input { flex: 1; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; }
+  .input-row input:focus { border-color: #4f46e5; }
+  .input-row button { padding: 10px 20px; background: #4f46e5; color: #fff; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 500; }
+  .input-row button:hover { background: #4338ca; }
+
+  /* study plan form */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .form-grid label { font-size: 13px; color: #666; display: block; margin-bottom: 4px; }
+  .form-grid input { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; outline: none; }
+  .form-grid input:focus { border-color: #4f46e5; }
+  .form-grid .full { grid-column: 1 / -1; }
+
+  #gen-plan { width: 100%; padding: 10px; background: #4f46e5; color: #fff; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; font-weight: 500; margin-bottom: 16px; }
+  #gen-plan:hover { background: #4338ca; }
+  #gen-plan:disabled { background: #9ca3af; cursor: not-allowed; }
+
+  .plan-card {
+    border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; margin-bottom: 8px;
+    display: flex; align-items: flex-start; gap: 14px;
+  }
+  .plan-card .time {
+    min-width: 90px; font-weight: 600; color: #4f46e5; font-size: 14px; padding-top: 2px;
+  }
+  .plan-card .body { flex: 1; }
+  .plan-card .title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .plan-card .task { font-size: 13px; color: #666; line-height: 1.5; }
+  .plan-card.break { background: #f9fafb; border-color: #e5e7eb; }
+  .plan-card.break .time { color: #10b981; }
+  .plan-card.break .title { color: #10b981; }
+
+  #plan-list { margin-top: 12px; }
+  .empty { text-align: center; color: #9ca3af; padding: 40px 0; font-size: 14px; }
+  .loading { text-align: center; color: #666; padding: 20px; }
+
+  .error-msg { background: #fee2e2; color: #dc2626; padding: 10px 14px; border-radius: 8px; font-size: 14px; margin-bottom: 12px; display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="tabs">
+    <button class="active" onclick="switchTab('chat')">💬 聊天</button>
+    <button onclick="switchTab('planner')">📚 学习计划</button>
+    <button onclick="switchTab('history')">📋 历史计划</button>
+  </div>
+
+  <!-- Chat -->
+  <div id="panel-chat" class="panel active">
+    <h1>AI 助手</h1>
+    <div id="chat-box">
+      <div class="msg assistant">你好！有什么可以帮你的？</div>
+    </div>
+    <div class="input-row">
+      <input id="chat-input" placeholder="输入消息..." onkeydown="if(event.key==='Enter') sendChat()">
+      <button onclick="sendChat()">发送</button>
+    </div>
+  </div>
+
+  <!-- Study Planner -->
+  <div id="panel-planner" class="panel">
+    <h1>AI 学习计划</h1>
+    <div class="form-grid">
+      <div class="full">
+        <label>学习主题</label>
+        <input id="plan-topic" placeholder="如：Node.js" value="Node.js">
+      </div>
+      <div>
+        <label>学习目标</label>
+        <input id="plan-goal" placeholder="如：掌握Express" value="掌握 Express 和 SQLite">
+      </div>
+      <div>
+        <label>可用时间</label>
+        <input id="plan-hours" placeholder="如：3小时" value="3小时">
+      </div>
+    </div>
+    <button id="gen-plan" onclick="generatePlan()">生成学习计划</button>
+    <div id="error-msg" class="error-msg"></div>
+    <div id="plan-list"></div>
+  </div>
+
+  <!-- History -->
+  <div id="panel-history" class="panel">
+    <h1>历史学习计划</h1>
+    <div id="history-list"><div class="empty">暂无计划记录</div></div>
+  </div>
+</div>
+
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tabs button:nth-child(${name === 'chat' ? 1 : name === 'planner' ? 2 : 3})`).classList.add('active');
+  document.getElementById(`panel-${name}`).classList.add('active');
+  if (name === 'history') loadHistory();
+}
+
+// === Chat ===
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+
+  const box = document.getElementById('chat-box');
+  box.innerHTML += `<div class="msg user">${escapeHtml(msg)}</div>`;
+  box.scrollTop = box.scrollHeight;
+
+  try {
+    const res = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    });
+    const data = await res.json();
+    box.innerHTML += `<div class="msg assistant">${escapeHtml(data.content || data.error)}</div>`;
+  } catch {
+    box.innerHTML += `<div class="msg error">请求失败，请检查服务器</div>`;
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+// === Study Plan ===
+async function generatePlan() {
+  const btn = document.getElementById('gen-plan');
+  const errEl = document.getElementById('error-msg');
+  const list = document.getElementById('plan-list');
+
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = '生成中...';
+  list.innerHTML = '<div class="loading">🤔 AI 正在为你规划学习方案...</div>';
+
+  try {
+    const res = await fetch('/study-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        topic: document.getElementById('plan-topic').value,
+        goal: document.getElementById('plan-goal').value,
+        hours: document.getElementById('plan-hours').value
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    if (!Array.isArray(data)) {
+      // response_format might wrap in a key
+      const arr = data.plan || data.items || data.schedule || Object.values(data)[0];
+      if (Array.isArray(arr)) renderPlan(arr);
+      else list.innerHTML = '<div class="empty">AI 返回格式异常，请重试</div>';
+    } else {
+      renderPlan(data);
+    }
+  } catch (err) {
+    errEl.textContent = '生成失败: ' + err.message;
+    errEl.style.display = 'block';
+    list.innerHTML = '';
+  }
+  btn.disabled = false;
+  btn.textContent = '生成学习计划';
+}
+
+function renderPlan(items) {
+  const list = document.getElementById('plan-list');
+  list.innerHTML = items.map(item => `
+    <div class="plan-card ${item.type === 'break' ? 'break' : ''}">
+      <div class="time">${escapeHtml(item.time)}</div>
+      <div class="body">
+        <div class="title">${escapeHtml(item.title)}</div>
+        <div class="task">${escapeHtml(item.task)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// === History ===
+async function loadHistory() {
+  const list = document.getElementById('history-list');
+  try {
+    const res = await fetch('/study-plans');
+    const plans = await res.json();
+    if (!plans.length) {
+      list.innerHTML = '<div class="empty">暂无计划记录</div>';
+      return;
+    }
+    list.innerHTML = plans.map(p => `
+      <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:10px">
+        <div style="font-size:13px;color:#666;margin-bottom:8px">
+          📚 ${escapeHtml(p.topic)} · ${new Date(p.created_at).toLocaleString('zh-CN')}
+        </div>
+        ${(Array.isArray(p.plan_data) ? p.plan_data : []).map(item => `
+          <div style="display:flex;gap:10px;padding:6px 0;font-size:13px;border-top:1px solid #f0f0f0">
+            <span style="min-width:80px;color:#4f46e5;font-weight:500">${escapeHtml(item.time)}</span>
+            <span style="flex:1">${escapeHtml(item.title)}</span>
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+  } catch {
+    list.innerHTML = '<div class="empty">加载失败</div>';
+  }
+}
+
+function escapeHtml(s) {
+  if (typeof s !== 'string') return s || '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>
