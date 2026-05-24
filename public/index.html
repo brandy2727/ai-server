@@ -182,15 +182,12 @@ async function generatePlan() {
       })
     });
     const data = await res.json();
-    if (data.error) throw new Error(data.error);
+    if (!res.ok || data.error) throw new Error(data.error || "请求失败");
 
-    if (!Array.isArray(data)) {
-      // response_format might wrap in a key
-      const arr = data.plan || data.items || data.schedule || Object.values(data)[0];
-      if (Array.isArray(arr)) renderPlan(arr);
-      else list.innerHTML = '<div class="empty">AI 返回格式异常，请重试</div>';
-    } else {
+    if (Array.isArray(data) && data.length) {
       renderPlan(data);
+    } else {
+      list.innerHTML = '<div class="empty">AI 返回格式异常，请重试</div>';
     }
   } catch (err) {
     errEl.textContent = '生成失败: ' + err.message;
@@ -227,7 +224,7 @@ async function loadHistory() {
     list.innerHTML = plans.map(p => `
       <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:10px">
         <div style="font-size:13px;color:#666;margin-bottom:8px">
-          📚 ${escapeHtml(p.topic)} · ${new Date(p.created_at).toLocaleString('zh-CN')}
+          📚 ${escapeHtml(p.topic)} · ${new Date(p.created_at.replace(' ', 'T') + 'Z').toLocaleString('zh-CN')}
         </div>
         ${(Array.isArray(p.plan_data) ? p.plan_data : []).map(item => `
           <div style="display:flex;gap:10px;padding:6px 0;font-size:13px;border-top:1px solid #f0f0f0">

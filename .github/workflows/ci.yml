@@ -38,7 +38,15 @@ jobs:
         run: |
           node server.js &
           SERVER_PID=$!
-          sleep 2
+
+          # 轮询等待服务器就绪（最长 15 秒）
+          for i in $(seq 1 15); do
+            if curl -s -o /dev/null http://localhost:3000/ 2>/dev/null; then
+              echo "Server ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
 
           # 测试 /chat 接口
           RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/response.json \

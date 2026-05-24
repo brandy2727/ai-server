@@ -69,52 +69,73 @@ app.get("/history", (req, res) => {
   res.json(rows);
 });
 
-// AI 学习计划助手
+// 生成学习计划
 app.post("/study-plan", async (req, res) => {
   try {
     const { topic, goal, hours } = req.body;
 
-    const systemPrompt = `你是一个 AI 学习计划规划师。根据用户的学习主题、目标和可用时间，制定一份详细的学习计划。
-要求：
-- 按时间段排列（如 9:00-10:00）
-- 每项任务包含：时间、学习内容、具体任务描述
-- 计划要合理，劳逸结合
-- 返回格式为 JSON 数组：[{ "time": "9:00-10:00", "title": "学习主题", "task": "具体做什么", "type": "study|break" }]
-- 只返回 JSON，不要包含 markdown 格式或额外说明`;
-
-    const userPrompt = `主题：${topic || "未指定"}
-目标：${goal || "系统学习"}
-可用时间：${hours || "全天"}`;
-
     const completion = await client.chat.completions.create({
       model: "deepseek-chat",
       messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: { type: "json_object" }
+        {
+          role: "system",
+          content: "你是一个学习规划助手。根据用户提供的学习主题、目标和可用时间，生成一份详细的学习计划。必须返回合法的 JSON 对象，不要包含 markdown 包裹。"
+        },
+        {
+          role: "user",
+          content: `主题：${topic}\n目标：${goal}\n可用时间：${hours}\n\n请生成一份学习计划，返回 JSON 对象格式：{"plan": [{"time": "09:00-10:00", "title": "标题", "task": "具体任务描述", "type": "study"}, ...]}，其中 type 为 "study" 或 "break"。只返回 JSON，不要任何额外文字。`
+        }
+      ]
     });
 
-    const planData = JSON.parse(completion.choices[0].message.content);
+    let content = completion.choices[0].message.content.trim();
+
+    // 去掉可能的 markdown 包裹
+    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) content = jsonMatch[1].trim();
+
+    const planData = JSON.parse(content);
+
+    // 提取数组：尝试常见 key，或取第一个数组值
+    let items = null;
+    if (Array.isArray(planData)) {
+      items = planData;
+    } else {
+      const candidates = ["plan", "items", "schedule", "study_plan", "plans", "tasks"];
+      for (const key of candidates) {
+        if (Array.isArray(planData[key])) {
+          items = planData[key];
+          break;
+        }
+      }
+      if (!items) {
+        // 取第一个数组类型的值
+        const vals = Object.values(planData);
+        for (const v of vals) {
+          if (Array.isArray(v)) { items = v; break; }
+        }
+      }
+      if (!items) items = [];
+    }
 
     // 存入数据库
-    db.prepare("INSERT INTO study_plans (topic, plan_data) VALUES (?, ?)").run(
-      topic || "未指定",
-      JSON.stringify(planData)
-    );
+    db.prepare("INSERT INTO study_plans (topic, plan_data) VALUES (?, ?)").run(topic, JSON.stringify(items));
 
-    res.json(planData);
-
+    res.json(items);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Study plan generation failed" });
+    console.error("Study plan error:", error);
+    console.error("Raw response:", completion?.choices?.[0]?.message?.content);
+    res.status(500).json({ error: "Failed to generate study plan", detail: error.message });
   }
 });
 
-// 查看历史学习计划
+// 获取历史学习计划
 app.get("/study-plans", (req, res) => {
   const rows = db.prepare("SELECT * FROM study_plans ORDER BY created_at DESC LIMIT 20").all();
-  res.json(rows.map(r => ({ ...r, plan_data: JSON.parse(r.plan_data) })));
+  res.json(rows.map(row => ({
+    ...row,
+    plan_data: JSON.parse(row.plan_data)
+  })));
 });
 
 app.listen(3000, () => {
